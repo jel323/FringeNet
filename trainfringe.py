@@ -24,10 +24,10 @@ def main(args: argparse.Namespace):
 
     # Train and test loop
     for epoch in range(trainer.start_epoch, trainer.start_epoch + args.num_epochs):
-        train_loss = trainer.train_epoch()
+        train_loss = trainer.train_epoch(epoch)
         test_loss = trainer.test_epoch()
-        train_loss_lst.append(train_loss.avg)
-        test_loss_lst.append(test_loss.avg)
+        train_loss_lst.append(train_loss)
+        test_loss_lst.append(test_loss)
 
         msave = not bool(epoch % args.save_freq)
         trainer.save_models(epoch, (train_loss_lst, test_loss_lst), msave)
@@ -59,33 +59,41 @@ if __name__ == "__main__":
         type=str,
         help="Name of file to get imgs from",
     )
-    parser.add_argument("-snameadd", type=str, help="Added to the end of the save file")
+    parser.add_argument(
+        "-snameadd", type=str, default="", help="Added to the end of the save file"
+    )
+    parser.add_argument("-batch_size", default=1, type=int, help="Batch size per GPU")
+    parser.add_argument("-lr", default=1e-3, type=float, help="Learning rate")
+    parser.add_argument(
+        "-transformations",
+        default=False,
+        type=str2bool,
+        help="Wether or not to apply image transformations during training epochs",
+    )
 
     # ------------------------Should/Can-Use----------------------------------
     parser.add_argument(
         "-seed", type=int, default=0, help="Random seed for reproducibility"
     )
     parser.add_argument(
-        "-getone_dset",
+        "-use_npy",
         default=True,
         type=str2bool,
-        help="Use the get one dataset (used when images are saved as pngs "
-        / "in a given directory) instead of store dataset",
+        help="Use the npy dataset (used when images are saved as a "
+        "npy file) instead of get one dataset",
     )
     parser.add_argument(
         "-num_img_plots",
-        default=5,
+        default=10,
         type=int,
         help="Number of Images plots made and stored in google drive",
     )
     parser.add_argument(
         "-save_freq", default=10, type=int, help="Frequency of epochs to save"
     )
-    parser.add_argument("-batch_size", default=1, type=int, help="Batch size per GPU")
     parser.add_argument(
         "-bn", default=True, type=str2bool, help="Use batch normalization"
     )
-    parser.add_argument("-lr", default=1e-3, type=float, help="Learning rate")
     parser.add_argument(
         "-num_epochs", default=50, type=int, help="Number of epochs to train"
     )
@@ -117,8 +125,8 @@ if __name__ == "__main__":
         type=str2bool,
         default=True,
         help="True if the images in the dataset have their"
-        / "true interferometry number as name, usually"
-        / "false if you have randomized the dataset order",
+        "true interferometry number as name, usually"
+        "false if you have randomized the dataset order",
     )
     parser.add_argument(
         "-n_layers", default=4, type=int, help="Number of conv layers in model"

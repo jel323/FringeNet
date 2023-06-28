@@ -21,9 +21,7 @@ class DiceLoss(nn.Module):
         targets = targets.view(-1)
 
         intersection = (inputs * targets).sum()
-        dice = (2.0 * intersection + smooth) / (
-            inputs.sum() + targets.sum() + smooth
-        )
+        dice = (2.0 * intersection + smooth) / (inputs.sum() + targets.sum() + smooth)
 
         return 1 - dice
 
@@ -38,9 +36,7 @@ class BCELoss(nn.Module):
 
 def diceloss(inputs, targets, smooth=1):
     intersection = (inputs * targets).sum()
-    dice = 1 - (2.0 * intersection + smooth) / (
-        inputs.sum() + targets.sum() + smooth
-    )
+    dice = 1 - (2.0 * intersection + smooth) / (inputs.sum() + targets.sum() + smooth)
     return dice
 
 

@@ -12,9 +12,9 @@ import util
 from tqdm import tqdm
 import filelist
 from PIL import Image
-import lossfuns
-import dataset as dset
-import model
+from TrainingFunctions import lossfuns
+from TrainingFunctions import dataset as dset
+from TrainingFunctions import model
 
 path = sys.path[0]
 bpath = path[: path.rfind(os.path.sep)]
@@ -41,7 +41,7 @@ class TrainFringe:
         self.fname1 = args.filename
         self.check_filename()
         print(f"Images Filename - {self.fname1}")
-        self.data_path = os.path.join(bpath, "Data", "interferometry")
+        self.data_path = os.path.join(bpath, "Data")
         self.fname2 = self.fname1 + args.snameadd
         print(f"Save Filename - {self.fname2}")
         if not self.args.resume:
@@ -78,13 +78,13 @@ class TrainFringe:
             test_set=True,
         )
         self.train_loader = data.DataLoader(
-            self.train_datasetset,
+            self.train_dataset,
             batch_size=self.args.batch_size,
             shuffle=True,
             num_workers=self.args.num_workers,
         )
         self.test_loader = data.DataLoader(
-            self.test_datasettestset,
+            self.test_dataset,
             batch_size=self.args.batch_size,
             shuffle=False,
             num_workers=self.args.num_workers,
@@ -224,6 +224,8 @@ class TrainFringe:
         loss.backward()
         self.optimizer.step()
         del loss
+        del imgs
+        del segs
         torch.cuda.empty_cache()
         return m_segs, loss_out, b_size
 
@@ -240,7 +242,9 @@ class TrainFringe:
         s = 0
         with tqdm(total=len(self.train_dataset)) as progress_bar:
             for imgs, segs in self.train_loader:
-                m_segs, loss, b_size = self.train_batch(imgs, segs)
+                m_segs, loss, b_size = self.train_batch(
+                    imgs.to(self.device), segs.to(self.device)
+                )
                 segs = self.crop(segs)
                 loss_meter.update(loss, b_size)
 
@@ -294,7 +298,9 @@ class TrainFringe:
         s = 0
         with tqdm(total=len(self.test_dataset)) as progress_bar:
             for imgs, segs in self.test_loader:
-                m_segs, loss, b_size = self.test_batch(imgs, segs)
+                m_segs, loss, b_size = self.test_batch(
+                    imgs.to(self.device), segs.to(self.device)
+                )
                 segs = self.crop(segs)
                 loss_meter.update(loss, b_size)
 
@@ -427,7 +433,7 @@ class TrainFringe:
             TrainFringe._saveImages(
                 epoch,
                 k,
-                TrainFringe._open_pairs(self.test_triples[k]),
+                TrainFringe._open_triples(self.test_triples[k]),
                 "test",
                 dir_path,
                 self.fname2,
@@ -466,7 +472,7 @@ class TrainFringe:
         """
         disc = input("Input Discription of This Run:\n>")
         dic = {
-            "Model Type": "1D GAN",
+            "Model Type": "UNet",
             "Model Name": self.fname2,
             "Dataset": self.fname1,
             "Number of Layers": str(self.args.n_layers),
@@ -474,7 +480,9 @@ class TrainFringe:
             "Batch Size": str(self.args.batch_size),
             "Testing Samples": str(self.args.testing_samples),
         }
-        f = open(os.path.join("ONEDGan", "saves", self.args.save_dir, "info.txt"), "w")
+        save_pth = os.path.join(self.data_path, "saves", self.fname2)
+        os.makedirs(save_pth, exist_ok=True)
+        f = open(os.path.join(save_pth, "info.txt"), "x")
         for k in dic.keys():
             f.write(k + " - " + dic[k] + "\n")
 
@@ -509,10 +517,19 @@ class TrainFringe:
         f.write("Description:\n")
         for k in lines:
             f.write(k + "\n")
-        fnames = filelist.fnames("Data/interferometry/img/raw" + self.fname1)
         f.write("\n")
         f.write("Images Used:\n")
-        for k in fnames:
-            f.write(k + "\n")
+        data_txt = open(
+            os.path.join(self.data_path, "img", "txtfiles", self.fname1 + ".txt"), "r"
+        )
+        for line in data_txt.readlines():
+            try:
+                fst = int(line[0])
+            except ValueError:
+                # This will certainly not cause a problem for me later
+                # (but actually most likely not)
+                pass
+            else:
+                f.write(line)
         f.close()
         return

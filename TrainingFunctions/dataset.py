@@ -39,8 +39,6 @@ def read_txt(txt_pth):
         l[1][0][:-1]: l[1][1][1:],
         l[2][0][:-1]: str2tuple(l[2][1][1:]),
         l[3][0][:-1]: int(l[3][1][1:]),
-        l[4][0][:-1]: bool(l[4][1][1:]),
-        l[5][0][:-1]: bool(l[5][1][1:]),
     }
     return d
 
@@ -78,6 +76,29 @@ class ImgSegmentationDataset3d(torch.utils.data.Dataset):
             "Get Item method of Image Segmentation Dataset subclass not implemented"
         )
         return
+
+    def transformboth(
+        self, img: torch.Tensor, seg: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        size = img.size()
+        tboth = torch.empty((4, size[1], size[2]))
+        tboth[0:3, :, :] = img
+        tboth[3, :, :] = seg
+
+        trans = torch.nn.Sequential()
+        if np.random.rand() < 0.08:
+            trans.append(
+                torchvision.transforms.ElasticTransform(
+                    np.abs(np.random.normal(200, 150)), 10.0
+                )
+            )
+        trans.append(torchvision.transforms.RandomHorizontalFlip(0.15))
+        trans.append(torchvision.transforms.RandomVerticalFlip(0.15))
+        scripted_trans = torch.jit.script(trans)
+        tout = scripted_trans(tboth)
+        img = tout[0:3, :, :]
+        seg = tout[3]
+        return img, seg
 
     def _get_shape(self) -> tuple[int, int]:
         return self.infodisc["n used to cut images"]
@@ -182,29 +203,6 @@ class ImgSegGetOne3d(ImgSegmentationDataset3d):
             seg.unsqueeze(0).float() / 255,
         )
 
-    def transformboth(
-        self, img: torch.Tensor, seg: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        size = img.size()
-        tboth = torch.empty((4, size[1], size[2]))
-        tboth[0:3, :, :] = img
-        tboth[3, :, :] = seg
-
-        trans = torch.nn.Sequential()
-        if np.random.rand() < 0:
-            trans.append(
-                torchvision.transforms.ElasticTransform(
-                    np.abs(np.random.normal(200, 150)), 10.0
-                )
-            )
-        trans.append(torchvision.transforms.RandomHorizontalFlip(0))
-        trans.append(torchvision.transforms.RandomVerticalFlip(1))
-        scripted_trans = torch.jit.script(trans)
-        tout = scripted_trans(tboth)
-        img = tout[0:3, :, :]
-        seg = tout[3]
-        return img, seg
-
     def _check_set_len(self) -> bool:
         return len(self.img_fnames) == len(self.seg_fnames)
 
@@ -282,29 +280,6 @@ class ImgDatasetStore3d(ImgSegmentationDataset3d):
             self.Pad(img).float() / 255,
             seg.unsqueeze(0).float() / 255,
         )
-
-    def transformboth(
-        self, img: torch.Tensor, seg: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        size = img.size()
-        tboth = torch.zeros((4, size[1], size[2]))
-        tboth[0:3, :, :] = img
-        tboth[3, :, :] = seg
-
-        trans = torch.nn.Sequential()
-        if np.random.rand() < 0:
-            trans.append(
-                torchvision.transforms.ElasticTransform(
-                    np.abs(np.random.normal(200, 150)), 10.0
-                )
-            )
-        trans.append(torchvision.transforms.RandomHorizontalFlip(0))
-        trans.append(torchvision.transforms.RandomVerticalFlip(1))
-        scripted_trans = torch.jit.script(trans)
-        tout = scripted_trans(tboth)
-        img = tout[0:3, :, :]
-        seg = tout[3]
-        return img, seg
 
     def _check_set_len(self) -> bool:
         return self.img.shape[0] == self.seg.shape[0]

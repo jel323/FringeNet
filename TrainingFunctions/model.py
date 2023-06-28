@@ -30,9 +30,7 @@ class RecurrentConv(nn.Module):
     def __init__(self, channels, kernel_size, n=2, bn=True):
         super().__init__()
         self.n = n
-        self.conv = nn.Sequential(
-            nn.Conv2d(channels, channels, kernel_size, stride=1)
-        )
+        self.conv = nn.Sequential(nn.Conv2d(channels, channels, kernel_size, stride=1))
         if bn:
             self.conv.append(nn.BatchNorm2d(channels))
         self.conv.append(nn.ReLU(inplace=True))
@@ -62,16 +60,12 @@ class ConvBlock(nn.Module):
         super().__init__()
         self.sfix = int(nconvs * (kernel_size - 1) / 2)
         self.convs = nn.Sequential()
-        self.convs.append(
-            nn.Conv2d(in_channels, out_channels, init_kernel_size)
-        )
+        self.convs.append(nn.Conv2d(in_channels, out_channels, init_kernel_size))
         if bn:
             self.convs.append(nn.BatchNorm2d(out_channels))
         for _ in range(nconvs - 1):
             self.convs.append(nn.LeakyReLU(0.2, inplace=True))
-            self.convs.append(
-                nn.Conv2d(out_channels, out_channels, kernel_size)
-            )
+            self.convs.append(nn.Conv2d(out_channels, out_channels, kernel_size))
             if bn:
                 self.convs.append(nn.BatchNorm2d(out_channels))
         self.end = nn.LeakyReLU(0.2, inplace=True)
@@ -79,9 +73,7 @@ class ConvBlock(nn.Module):
 
     def forward(self, x):
         x1 = self.convs(x)
-        x2 = self.featurematch(x)[
-            :, :, self.sfix : -self.sfix, self.sfix : -self.sfix
-        ]
+        x2 = self.featurematch(x)[:, :, self.sfix : -self.sfix, self.sfix : -self.sfix]
         return self.end(x1 + x2)
 
 
@@ -101,13 +93,9 @@ class RecurrentBlock(nn.Module):
         bn=True,
     ):
         super().__init__()
-        self.sfix = int(
-            (1 + (nconvs - 1) * nrepititions) * (kernel_size - 1) / 2
-        )
+        self.sfix = int((1 + (nconvs - 1) * nrepititions) * (kernel_size - 1) / 2)
         self.conv = nn.Sequential()
-        self.conv.append(
-            nn.Conv2d(in_channels, out_channels, init_kernel_size)
-        )
+        self.conv.append(nn.Conv2d(in_channels, out_channels, init_kernel_size))
         if bn:
             self.conv.append(nn.BatchNorm2d(out_channels))
         self.conv.append(nn.ReLU(inplace=True))
@@ -122,9 +110,7 @@ class RecurrentBlock(nn.Module):
     def forward(self, x):
         x1 = self.conv(x)
         x1 = self.convs(x1)
-        x2 = self.featurematch(x)[
-            :, :, self.sfix : -self.sfix, self.sfix : -self.sfix
-        ]
+        x2 = self.featurematch(x)[:, :, self.sfix : -self.sfix, self.sfix : -self.sfix]
         return self.end(x1 + x2)
 
 
@@ -135,16 +121,12 @@ class AttentionBlock1(nn.Module):
     def __init__(self, in_channels_g, in_channels_l, out_channels, bn=True):
         super().__init__()
         self.W_g = nn.Sequential(
-            nn.Conv2d(
-                in_channels_g, out_channels, kernel_size=1, stride=1, padding=0
-            )
+            nn.Conv2d(in_channels_g, out_channels, kernel_size=1, stride=1, padding=0)
         )
         if bn:
             self.W_g.append(nn.BatchNorm2d(out_channels))
         self.W_l = nn.Sequential(
-            nn.Conv2d(
-                in_channels_l, out_channels, kernel_size=1, stride=1, padding=0
-            )
+            nn.Conv2d(in_channels_l, out_channels, kernel_size=1, stride=1, padding=0)
         )
         if bn:
             self.W_l.append(nn.BatchNorm2d(out_channels))
@@ -251,16 +233,12 @@ class Up(nn.Module):
         super().__init__()
         self.inc = in_channels
         self.ouc = out_channels
-        self.up = nn.ConvTranspose2d(
-            in_channels, out_channels, kernel_size=2, stride=2
-        )
+        self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
         self.out = nn.Sequential()
         if dropout:
             self.out.append(nn.Dropout2d(0.05, inplace=True))
         if recurrent:
-            self.out.append(
-                RecurrentBlock(in_channels, out_channels, nconvs, bn=bn)
-            )
+            self.out.append(RecurrentBlock(in_channels, out_channels, nconvs, bn=bn))
         else:
             self.out.append(
                 ConvBlock(
@@ -632,9 +610,7 @@ class Discriminator(nn.Module):
         k_size["150x200"] = {4: (8, 11)}
         k_size["300x350"] = {4: (15, 18)}
         k_size["400x450"] = {4: (21, 24)}
-        self.end = EConv(
-            64 * 2 ** (k + 1), 1, k_size[imgshapestr][n_layers], bn
-        )
+        self.end = EConv(64 * 2 ** (k + 1), 1, k_size[imgshapestr][n_layers], bn)
         return
 
     def forward(self, x):
@@ -662,9 +638,7 @@ class UNetOld(nn.Module):
     def name(self):
         return "UNetOld"
 
-    def __init__(
-        self, n_channels, n_classes, init_kernel_size=3, kernel_size=3
-    ):
+    def __init__(self, n_channels, n_classes, init_kernel_size=3, kernel_size=3):
         super(UNetOld, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
