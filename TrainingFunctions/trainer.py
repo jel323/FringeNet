@@ -49,6 +49,10 @@ class TrainFringe:
         return
 
     @torch.no_grad()
+    def get_device(self) -> torch.device:
+        return self.device
+
+    @torch.no_grad()
     def check_filename(self) -> None:
         """
         Checks that a filename was given and throws exception if not.
@@ -68,6 +72,7 @@ class TrainFringe:
             os.path.join(self.data_path, "img"),
             self.fname1,
             testing_samples=self.args.testing_samples,
+            use_trans=self.args.transformations,
             pad=False,
         )
         self.test_dataset = dset.ImgDatasetStore3d(
@@ -98,34 +103,29 @@ class TrainFringe:
         return
 
     @torch.no_grad()
-    def make_model(self) -> None:
+    def set_model(self, trace_model: torch.nn.Module) -> None:
         """
         Makes the UNet model and Adam to be trained via the
         hyper-parameters given through the file arguments
         (like -filename). Also prints the model parameter summary.
         """
-        self.net = model.UNet(
-            3,
-            1,
-            n_layers=self.args.n_layers,
-            init_kernel_size=self.args.kernel_size,
-            nconvs=self.args.nconvs,
-            nrepititions=self.args.nrepititions,
-            bn=self.args.bn,
-            recurrent=self.args.recurrent,
-            recurrent_mid=self.args.recurrent_mid,
-            dropout=self.args.dropout,
-        ).to(self.device)
+        self.net = trace_model.to(self.get_device())
 
         self.optimizer = optim.Adam(
             self.net.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay
+        )
+        self.scheduler = sched.LinearLR(
+            self.optimizer,
+            1,
+            0.1,
+            200,
         )
         print("Model Type - " + self.net.name())
         model.count_params(self.net)
         return
 
     @torch.no_grad()
-    def initialize_model(self) -> None:
+    def initialize_model(self) -> tuple[list, list]:
         """
         Initializes the model parameters, either from scratch if training is
         not being resumed, or from a previous save if training is being
@@ -133,6 +133,8 @@ class TrainFringe:
         """
         self.start_epoch = 0
         self.best_loss = float("inf")
+        train_m_loss_lst = []
+        test_m_loss_lst = []
         if self.args.resume:
             if self.args.resume_best:
                 resume_str = os.path.join(
@@ -156,7 +158,8 @@ class TrainFringe:
             self.optimizer.load_state_dict(checkpoint["net_opt"])
             self.best_loss = checkpoint["test_loss"]
             self.start_epoch = checkpoint["epoch"] + 1
-        return
+            (train_m_loss_lst, test_m_loss_lst) = checkpoint["prev_losses"]
+        return train_m_loss_lst, test_m_loss_lst
 
     @torch.no_grad()
     def set_loss_fn(self) -> None:
@@ -482,7 +485,10 @@ class TrainFringe:
         }
         save_pth = os.path.join(self.data_path, "saves", self.fname2)
         os.makedirs(save_pth, exist_ok=True)
-        f = open(os.path.join(save_pth, "info.txt"), "x")
+        save_pth = os.path.join(save_pth, "info.txt")
+        if os.path.exists(save_pth):
+            os.remove(save_pth)
+        f = open(save_pth, "x")
         for k in dic.keys():
             f.write(k + " - " + dic[k] + "\n")
 

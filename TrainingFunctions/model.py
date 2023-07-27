@@ -8,7 +8,7 @@ from prettytable import PrettyTable as pt
 
 
 ### Functions on Models
-def count_params(model):
+def count_params(model: nn.Module):
     table = pt(["Modules", "Parameters"])
     t_params = 0
     for name, parameter in model.named_parameters():
@@ -362,6 +362,7 @@ class UNet(nn.Module):
         n_channels,
         n_classes,
         n_layers=4,
+        mult=64,
         init_kernel_size=3,
         kernel_size=3,
         nconvs=2,
@@ -377,7 +378,7 @@ class UNet(nn.Module):
         self.down.append(
             Down(
                 n_channels,
-                64,
+                mult,
                 nconvs,
                 nrepititions,
                 kernel_size=kernel_size,
@@ -391,8 +392,8 @@ class UNet(nn.Module):
         for k in range(n_layers - 1):
             self.down.append(
                 Down(
-                    (2**k) * 64,
-                    (2 ** (k + 1) * 64),
+                    (2**k) * mult,
+                    (2 ** (k + 1) * mult),
                     nconvs,
                     kernel_size,
                     bn=bn,
@@ -403,8 +404,8 @@ class UNet(nn.Module):
             )
         if recurrent_mid:
             self.mid = RecurrentBlock(
-                (2 ** (k + 1)) * 64,
-                (2 ** (k + 2)) * 64,
+                (2 ** (k + 1)) * mult,
+                (2 ** (k + 2)) * mult,
                 1,
                 nrepititions,
                 kernel_size,
@@ -412,8 +413,8 @@ class UNet(nn.Module):
             )
         else:
             self.mid = ConvBlock(
-                (2 ** (k + 1)) * 64,
-                (2 ** (k + 2)) * 64,
+                (2 ** (k + 1)) * mult,
+                (2 ** (k + 2)) * mult,
                 nconvs,
                 kernel_size,
                 bn=bn,
@@ -424,15 +425,15 @@ class UNet(nn.Module):
         for k in a:
             self.up.append(
                 Up(
-                    (2 ** (k + 1)) * 64,
-                    (2**k) * 64,
+                    (2 ** (k + 1)) * mult,
+                    (2**k) * mult,
                     nconvs,
                     bn=bn,
                     recurrent=recurrent,
                     dropout=dropout,
                 )
             )
-        self.outc = OutConv(64, n_classes)
+        self.outc = OutConv(mult, n_classes)
         return
 
     def forward(self, x):
@@ -446,319 +447,89 @@ class UNet(nn.Module):
         return self.outc(x)
 
 
-class DConv(nn.Module):
+def _fit_len(arr: np.ndarray, len: int, dtype=np.int32) -> np.ndarray:
+    if arr.shape[0] != len:
+        arr = np.ones((len,), dtype=dtype) * arr
+    return arr
+
+
+class NUNet(nn.Module):
     def name(self):
-        return "Discriminator Convolution"
+        return "NUNet"
 
     def __init__(
         self,
-        in_channels,
-        out_channels,
-        kernel_size=3,
-        init_kernel_size=3,
-        neg_slope=0.2,
-        nconvs=2,
+        n_unets: int,
+        n_channels: int,
+        n_classes: int,
+        n_layers: np.ndarray = np.array([4, 3], dtype=np.int32),
+        mult: np.ndarray = np.array([64], dtype=np.int32),
+        init_kernel_size: np.ndarray = np.array([3], dtype=np.int32),
+        kernel_size: int = 3,
+        nconvs: np.ndarray = np.array([2], dtype=np.int32),
+        nrepititions: np.ndarray = np.array([2], dtype=np.int32),
         bn=True,
+        recurrent=False,
+        recurrent_mid=False,
+        dropout=False,
     ):
-        super().__init__()
-        self.conv = ConvBlock(
-            in_channels,
-            out_channels,
-            nconvs,
-            kernel_size,
-            init_kernel_size,
-            bn,
-        )
-        self.out = nn.Conv2d(out_channels, out_channels, 2, 2)
-        return
+        super(NUNet, self).__init__()
+        self.n_unets = n_unets
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        n_layers = _fit_len(n_layers, n_unets)
+        mult = _fit_len(mult, n_unets)
+        init_kernel_size = _fit_len(init_kernel_size, n_unets)
+        nconvs = _fit_len(nconvs, n_unets)
+        nrepititions = _fit_len(nrepititions, n_unets)
 
-    def forward(self, x):
-        x = self.conv(x)
-        return self.out(x)
-
-
-class EConv(nn.Module):
-    def name(self):
-        return "End Convolution"
-
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        kernel_size,
-        bn=True,
-    ):
-        super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, kernel_size),
-            nn.ReLU(True),
-            nn.Conv2d(in_channels, out_channels, 1),
-            nn.Sigmoid(),
-        )
-        return
-
-    def forward(self, x):
-        return self.conv(x)
-
-
-class DiscTest(nn.Module):
-    def name(self):
-        return "Discriminator Testing"
-
-    def __init__(
-        self,
-        imgshape,
-        n_channels,
-        n_layers=4,
-        init_kernel_size=3,
-        kernel_size=3,
-        nconvs=2,
-        nrepititions=2,
-        neg_slope=0.2,
-        bn=True,
-    ):
-        super().__init__()
-        self.pad = torchvision.transforms.Pad(0)
-        self.imgshape = imgshape
-        imgshapestr = str(imgshape[0]) + "x" + str(imgshape[1])
-        self.n_layers = n_layers
-        self.nconvs = nconvs
-        self.kernel_size = kernel_size
-        self.init_kernel_size = init_kernel_size
-        self.disc = nn.Sequential(
-            DConv(
-                n_channels,
-                64,
-                kernel_size,
-                init_kernel_size,
-                neg_slope,
-                nconvs,
-                bn,
-            ),
-        )
-        for k in range(n_layers - 1):
-            self.disc.append(
-                DConv(
-                    64 * 2**k,
-                    64 * 2 ** (k + 1),
-                    kernel_size,
-                    neg_slope=neg_slope,
-                    nconvs=nconvs,
-                    bn=bn,
+        self.nets = nn.ModuleList()
+        for k in range(n_unets):
+            if k == 0:
+                self.nets.append(
+                    UNet(
+                        n_channels,
+                        n_classes,
+                        n_layers=n_layers[k],
+                        mult=mult[k],
+                        init_kernel_size=init_kernel_size[k],
+                        kernel_size=kernel_size,
+                        nconvs=nconvs[k],
+                        nrepititions=nrepititions[k],
+                        bn=bn,
+                        recurrent=recurrent,
+                        recurrent_mid=recurrent_mid,
+                        dropout=dropout,
+                    )
                 )
-            )
-        return
-
-    def forward(self, x):
-        x = self.pad(x)
-        return self.disc(x)
-
-
-class Discriminator(nn.Module):
-    def name(self):
-        return "Discriminator"
-
-    def __init__(
-        self,
-        imgshape,
-        n_channels,
-        n_layers=4,
-        init_kernel_size=3,
-        kernel_size=3,
-        nconvs=2,
-        nrepititions=2,
-        neg_slope=0.2,
-        bn=True,
-    ):
-        super().__init__()
-        self.pad = torchvision.transforms.Pad(100)
-        self.imgshape = imgshape
-        imgshapestr = str(imgshape[0]) + "x" + str(imgshape[1])
-        self.n_layers = n_layers
-        self.nconvs = nconvs
-        self.kernel_size = kernel_size
-        self.init_kernel_size = init_kernel_size
-        self.disc = nn.Sequential(
-            DConv(
-                n_channels,
-                64,
-                kernel_size,
-                init_kernel_size,
-                neg_slope,
-                nconvs,
-                bn,
-            ),
-        )
-        for k in range(n_layers - 1):
-            self.disc.append(
-                DConv(
-                    64 * 2**k,
-                    64 * 2 ** (k + 1),
-                    kernel_size,
-                    neg_slope=neg_slope,
-                    nconvs=nconvs,
-                    bn=bn,
+            else:
+                self.nets.append(
+                    UNet(
+                        n_channels + n_classes,
+                        n_classes,
+                        n_layers=n_layers[k],
+                        mult=mult[k],
+                        init_kernel_size=init_kernel_size[k],
+                        kernel_size=kernel_size,
+                        nconvs=nconvs[k],
+                        nrepititions=nrepititions[k],
+                        bn=bn,
+                        recurrent=recurrent,
+                        recurrent_mid=recurrent_mid,
+                        dropout=dropout,
+                    )
                 )
-            )
-        k_size = {}
-        k_size["600x800"] = {
-            4: (33, 46),
-            3: (76, 103),
-            2: (157, 211),
-        }
-        k_size["400x500"] = {4: (100, 100)}
-        k_size["150x200"] = {4: (8, 11)}
-        k_size["300x350"] = {4: (15, 18)}
-        k_size["400x450"] = {4: (21, 24)}
-        self.end = EConv(64 * 2 ** (k + 1), 1, k_size[imgshapestr][n_layers], bn)
+        self.pad = torchvision.transforms.Pad((94, 98))
         return
 
-    def forward(self, x):
-        x = self.pad(x)
-        x = self.disc(x)
-        return self.end(x)
-
-    def calcimgshape(self):
-        imgshape = np.int64(
-            (
-                self.imgshape
-                - (self.init_kernel_size - 1)
-                - (self.nconvs - 1) * (self.kernel_size - 1)
+    def forward(self, x: torch.Tensor):
+        x1 = self.nets[0](x)
+        for k in range(1, self.n_unets):
+            x2 = torch.empty(
+                (x.size(0), self.n_channels + self.n_classes, x.size(2), x.size(3)),
+                device=x.device,
             )
-            / 2
-        )
-        for _ in range(self.n_layers - 1):
-            imgshape = np.int64(
-                (imgshape - 2 * self.nconvs * (self.kernel_size - 1)) / 2
-            )
-        return tuple(imgshape)
-
-
-class UNetOld(nn.Module):
-    def name(self):
-        return "UNetOld"
-
-    def __init__(self, n_channels, n_classes, init_kernel_size=3, kernel_size=3):
-        super(UNetOld, self).__init__()
-        self.n_channels = n_channels
-        self.n_classes = n_classes
-        self.init_kernel_size = init_kernel_size
-        self.down1 = Down(n_channels, 64, init_kernel_size)
-        self.down2 = Down(64, 128, kernel_size)
-        self.down3 = Down(128, 256, kernel_size)
-        self.down4 = Down(256, 512, kernel_size)
-        self.mid = ConvBlockOld(512, 1024, kernel_size)
-        self.up1 = Up(1024, 512)
-        self.up2 = Up(512, 256)
-        self.up3 = Up(256, 128)
-        self.up4 = Up(128, 64)
-        self.outc = OutConv(64, n_classes)
-
-    def forward(self, x):
-        d, x1 = self.down1(x)
-        d, x2 = self.down2(d)
-        d, x3 = self.down3(d)
-        d, x4 = self.down4(d)
-        mid = self.mid(d)
-        u = self.up1(mid, x4)
-        u = self.up2(u, x3)
-        u = self.up3(u, x2)
-        u = self.up4(u, x1)
-        return self.outc(u)
-
-
-class UNet_vgg(nn.Module):
-    def name(self):
-        return "UNet with vgg"
-
-    def __init__(self, n_channels, n_classes):
-        super(UNet_vgg, self).__init__()
-        self.n_channels = n_channels
-        self.n_classes = n_classes
-        self.pool = nn.MaxPool2d(2, 2)
-        self.relu = nn.ReLU(inplace=True)
-        self.encoder = torchvision.models.vgg16(True).features
-        for i in [0, 2, 5, 7, 10, 12, 14]:
-            self.encoder[i].padding = (0, 0)
-            self.encoder[i].requires_grad = False
-        self.down1 = nn.Sequential(
-            self.encoder[0], self.relu, self.encoder[2], self.relu
-        )
-        self.down2 = nn.Sequential(
-            self.encoder[5], self.relu, self.encoder[7], self.relu
-        )
-        self.down3 = nn.Sequential(
-            self.encoder[10],
-            self.relu,
-            self.encoder[12],
-            self.relu,
-            self.encoder[14],
-            self.relu,
-        )
-        self.middle = ConvBlockOld(256, 512)
-        self.up1 = Up(512, 256)
-        self.up2 = Up(256, 128)
-        self.up3 = Up(128, 64)
-        self.outc = OutConv(64, n_classes)
-
-    def forward(self, x):
-        conv1 = self.down1(x)
-        conv2 = self.down2(self.pool(conv1))
-        conv3 = self.down3(self.pool(conv2))
-        mid = self.middle(self.pool(conv3))
-        x = self.up1(mid, conv3)
-        x = self.up2(x, conv2)
-        x = self.up3(x, conv1)
-        return self.outc(x)
-
-
-class SmallNet(nn.Module):
-    def name(self):
-        return "SmallNet"
-
-    def __init__(self, n_channels, n_classes):
-        super(SmallNet, self).__init__()
-        self.n_channels = n_channels
-        self.n_classes = n_classes
-        self.down1 = Down(n_channels, 64)
-        self.down2 = Down(64, 128)
-        self.down3 = Down(128, 256)
-        self.mid = ConvBlockOld(256, 512)
-        self.up1 = Up(512, 256)
-        self.up2 = Up(256, 128)
-        self.up3 = Up(128, 64)
-        self.outc = OutConv(64, n_classes)
-
-    def forward(self, x):
-        d, x1 = self.down1(x)
-        d, x2 = self.down2(d)
-        d, x3 = self.down3(d)
-        mid = self.mid(d)
-        u = self.up1(mid, x3)
-        u = self.up2(u, x2)
-        u = self.up3(u, x1)
-        return self.outc(u)
-
-
-class XSmallNet(nn.Module):
-    def name(self):
-        return "XSmallNet"
-
-    def __init__(self, n_channels, n_classes):
-        super(XSmallNet, self).__init__()
-        self.n_channels = n_channels
-        self.n_classes = n_classes
-        self.down1 = Down(n_channels, 64)
-        self.down2 = Down(64, 128)
-        self.mid = ConvBlockOld(128, 256)
-        self.up1 = Up(256, 128)
-        self.up2 = Up(128, 64)
-        self.outc = OutConv(64, n_classes)
-
-    def forward(self, x):
-        d, x1 = self.down1(x)
-        d, x2 = self.down2(d)
-        mid = self.mid(d)
-        u = self.up1(mid, x2)
-        u = self.up2(u, x1)
-        return self.outc(u)
+            x2[:, : self.n_channels, :, :] = x
+            x2[:, -self.n_classes :, :, :] = self.pad(x1)
+            x1 = self.nets[k](x2)
+        return x1

@@ -2,6 +2,8 @@ import argparse
 import sys
 import os
 import torch
+import numpy as np
+from TrainingFunctions import model
 
 path = sys.path[0]
 print(f"Current Path - {path}")
@@ -10,17 +12,34 @@ from TrainingFunctions import trainer as tr
 
 
 def main(args: argparse.Namespace):
+    args.n_layers = np.array(args.n_layers, dtype=np.int32)
+    args.channel_mult = np.array(args.channel_mult, dtype=np.int32)
+    args.kernel_size = np.array(args.kernel_size, dtype=np.int32)
+    args.nconvs = np.array(args.nconvs, dtype=np.int32)
+    args.nrepititions = np.array(args.nrepititions, dtype=np.int32)
     trainer = tr.TrainFringe(args)
 
     trainer.make_datasets()
-    trainer.make_model()
-    trainer.initialize_model()
+    trainer.set_model(
+        model.NUNet(
+            args.n_unets,
+            3,
+            1,
+            n_layers=args.n_layers,
+            mult=args.channel_mult,
+            init_kernel_size=args.kernel_size,
+            nconvs=args.nconvs,
+            nrepititions=args.nrepititions,
+            bn=args.bn,
+            recurrent=args.recurrent,
+            recurrent_mid=args.recurrent_mid,
+            dropout=args.dropout,
+        ).to(trainer.get_device())
+    )
+    train_loss_lst, test_loss_lst = trainer.initialize_model()
 
     trainer.set_loss_fn()
     trainer.order_crops()
-
-    train_loss_lst = []
-    test_loss_lst = []
 
     # Train and test loop
     for epoch in range(trainer.start_epoch, trainer.start_epoch + args.num_epochs):
@@ -49,7 +68,7 @@ def getcudainfo(device: torch.device) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    def str2bool(s):
+    def str2bool(s: str) -> bool:
         return s.lower().startswith("t")
 
     # ------------------------Must-Use----------------------------------------
@@ -69,6 +88,12 @@ if __name__ == "__main__":
         default=False,
         type=str2bool,
         help="Wether or not to apply image transformations during training epochs",
+    )
+    parser.add_argument(
+        "-n_unets",
+        default=2,
+        type=int,
+        help="Number of sequential unets",
     )
 
     # ------------------------Should/Can-Use----------------------------------
@@ -93,6 +118,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-bn", default=True, type=str2bool, help="Use batch normalization"
+    )
+    parser.add_argument(
+        "-channel_mult",
+        default=[64],
+        type=int,
+        nargs="+",
+        help="Base multiplier for channels",
     )
     parser.add_argument(
         "-num_epochs", default=50, type=int, help="Number of epochs to train"
@@ -129,24 +161,31 @@ if __name__ == "__main__":
         "false if you have randomized the dataset order",
     )
     parser.add_argument(
-        "-n_layers", default=4, type=int, help="Number of conv layers in model"
+        "-n_layers",
+        default=[4],
+        type=int,
+        nargs="+",
+        help="Number of conv layers in model",
     )
     parser.add_argument(
         "-kernel_size",
-        default=3,
+        default=[3],
         type=int,
+        nargs="+",
         help="Kernel size in initial convolution operator",
     )
     parser.add_argument(
         "-nconvs",
-        default=2,
+        default=[2],
         type=int,
+        nargs="+",
         help="Number of Convolutions in Convolution Block",
     )
     parser.add_argument(
         "-nrepititions",
-        default=2,
+        default=[2],
         type=int,
+        nargs="+",
         help="Number of repititions in recurrent block",
     )
     parser.add_argument(
