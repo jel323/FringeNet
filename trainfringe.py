@@ -12,6 +12,10 @@ from TrainingFunctions import trainer as tr
 
 
 def main(args: argparse.Namespace):
+    if args.filename == "bigcutbright":
+        img_size = (400, 600)
+    elif args.filename == "bigcutbrights":
+        img_size = (200, 250)
     args.n_layers = np.array(args.n_layers, dtype=np.int32)
     args.channel_mult = np.array(args.channel_mult, dtype=np.int32)
     args.kernel_size = np.array(args.kernel_size, dtype=np.int32)
@@ -22,9 +26,9 @@ def main(args: argparse.Namespace):
     trainer.make_datasets()
     trainer.set_model(
         model.NUNet(
-            args.n_unets,
-            3,
-            1,
+            n_unets=args.n_unets,
+            n_channels=3,
+            n_classes=1,
             n_layers=args.n_layers,
             mult=args.channel_mult,
             init_kernel_size=args.kernel_size,
@@ -34,6 +38,7 @@ def main(args: argparse.Namespace):
             recurrent=args.recurrent,
             recurrent_mid=args.recurrent_mid,
             dropout=args.dropout,
+            img_size=img_size,
         ).to(trainer.get_device())
     )
     train_loss_lst, test_loss_lst = trainer.initialize_model()
@@ -152,6 +157,11 @@ if __name__ == "__main__":
     )
 
     # ------------------------Should-Not-Use----------------------------------
+    parser.add_argument(
+        "-save_ext",
+        type=str,
+        default=".pt",
+    )
     parser.add_argument(
         "-true_img_name",
         type=str2bool,

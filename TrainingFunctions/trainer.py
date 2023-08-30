@@ -22,7 +22,7 @@ bpath = path[: path.rfind(os.path.sep)]
 
 class TrainFringe:
     @torch.no_grad()
-    def __init__(self, args: argparse.Namespace) -> None:
+    def __init__(self, args) -> None:
         self.args = args
         # Set up main device and scale batch size
         self.device = (
@@ -46,6 +46,10 @@ class TrainFringe:
         print(f"Save Filename - {self.fname2}")
         if not self.args.resume:
             self.maketxt()
+        return
+
+    @torch.no_grad()
+    def hpo_data_path(self, num):
         return
 
     @torch.no_grad()
@@ -138,7 +142,10 @@ class TrainFringe:
         if self.args.resume:
             if self.args.resume_best:
                 resume_str = os.path.join(
-                    self.data_path, "saves", self.fname2, "best_pth.tar"
+                    self.data_path,
+                    "saves",
+                    self.fname2,
+                    "best_pth" + self.args.save_ext,
                 )
             if self.args.resume_epoch:
                 resume_str = os.path.join(
@@ -146,11 +153,14 @@ class TrainFringe:
                     "saves",
                     self.fname2,
                     "all",
-                    str(self.args.resume_epoch_n) + "_pth.tar",
+                    str(self.args.resume_epoch_n) + "_pth" + self.args.save_ext,
                 )
             else:
                 resume_str = os.path.join(
-                    self.data_path, "saves", self.fname2, "recent_pth.tar"
+                    self.data_path,
+                    "saves",
+                    self.fname2,
+                    "recent_pth" + self.args.save_ext,
                 )
             print("Resuming from checkpoint at " + resume_str)
             checkpoint = torch.load(resume_str)
@@ -350,11 +360,11 @@ class TrainFringe:
             self.best_loss = losses[1][-1]
             print("Saving Best ...")
             state["test_loss"] = self.best_loss
-            torch.save(state, os.path.join(save_pth, "best_pth.tar"))
-        torch.save(state, os.path.join(save_pth, "recent_pth.tar"))
+            torch.save(state, os.path.join(save_pth, "best_pth.pt"))
+        torch.save(state, os.path.join(save_pth, "recent_pth.pt"))
         if msave:
             os.makedirs(os.path.join(save_pth, "all"), exist_ok=True)
-            torch.save(state, os.path.join(save_pth, "all", str(epoch) + "_pth.tar"))
+            torch.save(state, os.path.join(save_pth, "all", str(epoch) + "_pth.pt"))
         return
 
     @staticmethod

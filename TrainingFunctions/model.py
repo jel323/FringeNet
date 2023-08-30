@@ -359,10 +359,10 @@ class UNet(nn.Module):
 
     def __init__(
         self,
-        n_channels,
-        n_classes,
+        n_channels=3,
+        n_classes=1,
         n_layers=4,
-        mult=64,
+        mult=16,
         init_kernel_size=3,
         kernel_size=3,
         nconvs=2,
@@ -436,7 +436,7 @@ class UNet(nn.Module):
         self.outc = OutConv(mult, n_classes)
         return
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         xs = []
         for k in range(self.n_layers):
             x, ph = self.down[k](x)
@@ -445,6 +445,25 @@ class UNet(nn.Module):
         for k in range(self.n_layers):
             x = self.up[k](x, xs[-k - 1])
         return self.outc(x)
+
+    def hyperparams(self):
+        return
+
+    def partial(self, x: torch.Tensor, n: int):
+        xs = []
+        lr1 = range(self.n_layers) if n >= self.n_layers else range(n)
+        for k in lr1:
+            x, ph = self.down[k](x)
+            xs.append(ph)
+        if n >= 5:
+            x = self.mid(x)
+        lr2 = range(self.n_layers) if n >= 2 * self.n_layers + 1 else range(n - 5)
+        for k in lr2:
+            x, ph = self.up[k](x, xs[-k - 1])
+        if n >= 2 * self.n_layers + 2:
+            return self.outc(x)
+        else:
+            return x
 
 
 def _fit_len(arr: np.ndarray, len: int, dtype=np.int32) -> np.ndarray:
@@ -457,13 +476,17 @@ class NUNet(nn.Module):
     def name(self):
         return "NUNet"
 
+    @staticmethod
+    def default_params():
+        return (2, 3, 1, np.array([4, 4]), np.array([16, 16]))
+
     def __init__(
         self,
-        n_unets: int,
-        n_channels: int,
-        n_classes: int,
+        n_unets: int = 2,
+        n_channels: int = 3,
+        n_classes: int = 1,
         n_layers: np.ndarray = np.array([4, 3], dtype=np.int32),
-        mult: np.ndarray = np.array([64], dtype=np.int32),
+        mult: np.ndarray = np.array([16], dtype=np.int32),
         init_kernel_size: np.ndarray = np.array([3], dtype=np.int32),
         kernel_size: int = 3,
         nconvs: np.ndarray = np.array([2], dtype=np.int32),
@@ -472,6 +495,7 @@ class NUNet(nn.Module):
         recurrent=False,
         recurrent_mid=False,
         dropout=False,
+        img_size=(400, 600),
     ):
         super(NUNet, self).__init__()
         self.n_unets = n_unets
@@ -519,7 +543,19 @@ class NUNet(nn.Module):
                         dropout=dropout,
                     )
                 )
-        self.pad = torchvision.transforms.Pad((94, 98))
+        self.pads = nn.ModuleList()
+        if img_size == (400, 600):
+            for k in range(self.n_unets):
+                if n_layers[k] == 4:
+                    self.pads.append(torchvision.transforms.Pad((94, 98)))
+                elif n_layers[k] == 3:
+                    self.pads.append(torchvision.transforms.Pad((46, 46)))
+        elif img_size == (200, 250):
+            for k in range(self.n_unets):
+                if n_layers[k] == 4:
+                    self.pads.append(torchvision.transforms.Pad((95, 94)))
+                elif n_layers[k] == 3:
+                    self.pads.append(torchvision.transforms.Pad((47, 46)))
         return
 
     def forward(self, x: torch.Tensor):
@@ -530,6 +566,35 @@ class NUNet(nn.Module):
                 device=x.device,
             )
             x2[:, : self.n_channels, :, :] = x
-            x2[:, -self.n_classes :, :, :] = self.pad(x1)
+            x2[:, -self.n_classes :, :, :] = self.pads[k - 1](x1)
             x1 = self.nets[k](x2)
         return x1
+
+    def first(self, x: torch.Tensor):
+        return self.nets[0](x)
+
+    def partial(self, x: torch.Tensor, full: int, part: int):
+        if full > 0:
+            x1 = self.nets[0](x)
+        else:
+            return self.nets[0].partial(x, part)
+        if full > self.n_unets:
+            full = self.n_unets
+        for k in range(1, full):
+            x2 = torch.empty(
+                (x.size(0), self.n_channels + self.n_classes, x.size(2), x.size(3)),
+                device=x.device,
+            )
+            x2[:, : self.n_channels, :, :] = x
+            x2[:, -self.n_classes :, :, :] = self.pad(x1)
+            x1 = self.nets[k](x2)
+        if part == 0:
+            return x1
+        else:
+            x2 = torch.empty(
+                (x.size(0), self.n_channels + self.n_classes, x.size(2), x.size(3)),
+                device=x.device,
+            )
+            x2[:, : self.n_channels, :, :] = x
+            x2[:, -self.n_classes :, :, :] = self.pad(x1)
+            return self.nets[k + 1].partial(x2, part)

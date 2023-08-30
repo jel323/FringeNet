@@ -86,14 +86,14 @@ class ImgSegmentationDataset3d(torch.utils.data.Dataset):
         tboth[3, :, :] = seg
 
         trans = torch.nn.Sequential()
-        if np.random.rand() < 0.08:
+        if np.random.rand() < 0.02:
             trans.append(
                 torchvision.transforms.ElasticTransform(
                     np.abs(np.random.normal(200, 150)), 10.0
                 )
             )
-        trans.append(torchvision.transforms.RandomHorizontalFlip(0.15))
-        trans.append(torchvision.transforms.RandomVerticalFlip(0.15))
+        trans.append(torchvision.transforms.RandomHorizontalFlip(0.06))
+        trans.append(torchvision.transforms.RandomVerticalFlip(0.06))
         scripted_trans = torch.jit.script(trans)
         tout = scripted_trans(tboth)
         img = tout[0:3, :, :]
