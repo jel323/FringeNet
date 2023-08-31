@@ -2,7 +2,7 @@ python packages required:
 
 argparse
 numpy
-pytorch
+pytorch - cpu fine unless training
 tqdm
 PILLOW
 prettytable
