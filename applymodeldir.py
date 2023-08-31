@@ -10,7 +10,17 @@ from ImageFunctions import imgsplit as imgs
 from ApplyModel import open_model as openm
 
 
-# This file applies the specified model to a directory of raw images, and stores the traces in a new directory
+"""
+This file applies the specified model to a directory of raw images, and stores the traces in a new directory
+
+How to use:
+The added arguments at the bottom (argparse) are added when running the file, I use terminal to run them
+(anaconda prompt on windows), for example when running this function, the following is entered into terminal
+once you are in the correct directory (the one with this file), these arguments are for the example data
+and model in the github repo
+
+python applymodeldir.py -run_path examplemodel -img_dir rawexample
+"""
 
 
 def main(split, combine, img_dir, run_path, model_filename, model_type, device, pad):
@@ -71,19 +81,19 @@ if __name__ == "__main__":
         help="Path of file for models from a specific run",
     )
     parser.add_argument(
+        "-img_dir", default=None, type=str, help="Directory of raw images"
+    )
+    parser.add_argument(
         "-model_filename",
         default="recent_pth",
         type=str,
         help="File name of model in specified run file",
     )
+
+    # Shouldnt use
     parser.add_argument(
         "-model_type", default="NUNet", type=str, help="Type of model to use"
     )
-    parser.add_argument(
-        "-img_dir", default=None, type=str, help="Directory of raw images"
-    )
-
-    # Shouldnt use
     parser.add_argument(
         "-device", default="cpu", type=str, help="Device to run model on"
     )
