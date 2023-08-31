@@ -1,0 +1,8 @@
+python packages required:
+
+argparse
+numpy
+pytorch
+tqdm
+PILLOW
+prettytable
